@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>iCOLLECTION — Collection Reconciliation</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+
 <style>
 :root{--navy:#0a0e1a;--navy2:#111827;--navy3:#1a2234;--navy4:#243044;--navy5:#2e3f5c;--gold:#c9a84c;--gold2:#e8c96a;--gold3:#f5e0a0;--teal:#0d9488;--teal2:#14b8a6;--red:#ef4444;--red2:#fca5a5;--amber:#f59e0b;--amber2:#fcd34d;--green:#10b981;--green2:#6ee7b7;--blue:#3b82f6;--blue2:#93c5fd;--purple:#8b5cf6;--white:#f8fafc;--gray1:#e2e8f0;--gray2:#94a3b8;--gray3:#475569;--gray4:#1e293b;--font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;--radius:8px;--radius2:12px;--shadow:0 4px 24px rgba(0,0,0,0.4)}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -169,17 +170,71 @@ let APP = {user:null,config:JSON.parse(JSON.stringify(DEFAULT_CONFIG)),data:{use
 
 // \u2500\u2500 STORAGE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 // \u2500\u2500 STORAGE LAYER \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-// Tries Artifact Storage API first, falls back to localStorage
+// ── FIREBASE REALTIME STORAGE — pure REST API (no SDK, no CDN scripts) ───────
+// Uses Firestore REST API directly via fetch() — zero dependencies
+
+const _FB_PROJECT='icollection-e3257';
+const _FB_APIKEY='AIzaSyBpr9S-Usocj44M68fbU9xL9O_Va9Af6hQ';
+const _FB_BASE=`https://firestore.googleapis.com/v1/projects/${_FB_PROJECT}/databases/(default)/documents/icollection`;
+
+// Convert Firestore REST value format → plain JS value
+function _fromFB(v){
+  if(v===null||v===undefined)return null;
+  if(v.stringValue!==undefined)return v.stringValue;
+  if(v.integerValue!==undefined)return Number(v.integerValue);
+  if(v.doubleValue!==undefined)return Number(v.doubleValue);
+  if(v.booleanValue!==undefined)return v.booleanValue;
+  if(v.nullValue!==undefined)return null;
+  if(v.mapValue)return Object.fromEntries(Object.entries(v.mapValue.fields||{}).map(([k,val])=>[k,_fromFB(val)]));
+  if(v.arrayValue)return(v.arrayValue.values||[]).map(_fromFB);
+  return null;
+}
+// Convert plain JS value → Firestore REST value format
+function _toFB(v){
+  if(v===null||v===undefined)return{nullValue:null};
+  if(typeof v==='boolean')return{booleanValue:v};
+  if(typeof v==='number')return Number.isInteger(v)?{integerValue:String(v)}:{doubleValue:v};
+  if(typeof v==='string')return{stringValue:v};
+  if(Array.isArray(v))return{arrayValue:{values:v.map(_toFB)}};
+  if(typeof v==='object')return{mapValue:{fields:Object.fromEntries(Object.entries(v).map(([k,val])=>[k,_toFB(val)]))}};
+  return{stringValue:String(v)};
+}
+
+async function _fbGet(k){
+  try{
+    const r=await fetch(`${_FB_BASE}/${k}?key=${_FB_APIKEY}`);
+    if(!r.ok)return null;
+    const d=await r.json();
+    const payload=_fromFB({mapValue:{fields:d.fields||{}}});
+    return payload&&payload.payload!==undefined?JSON.stringify(payload.payload):null;
+  }catch(e){return null;}
+}
+async function _fbSet(k,v){
+  try{
+    const fields=_toFB({payload:JSON.parse(v)}).mapValue.fields;
+    await fetch(`${_FB_BASE}/${k}?key=${_FB_APIKEY}`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fields})
+    });
+  }catch(e){console.warn('Firebase write error',e);}
+}
+
 const STORE={
-  async get(k){try{return localStorage.getItem(k);}catch(e){return null;}},
-  async set(k,v){try{localStorage.setItem(k,v);}catch(e){console.warn('Storage full',e);}}
-};;
+  async get(k){
+    try{const v=await _fbGet(k);if(v!==null)return v;}catch(e){}
+    try{return localStorage.getItem(k);}catch(e){return null;}
+  },
+  async set(k,v){
+    try{await _fbSet(k,v);}catch(e){}
+    try{localStorage.setItem(k,v);}catch(e){}
+  }
+};
 
 async function loadStorage(){
   try{
     const v=await STORE.get('ts_config');
     APP.config=v?JSON.parse(v):JSON.parse(JSON.stringify(DEFAULT_CONFIG));
-    // Always ensure bootstrap admin exists so Admin can log in on any device/browser
     const BOOTSTRAP=DEFAULT_CONFIG.users.find(u=>u.bootstrap);
     if(BOOTSTRAP&&!APP.config.users.find(u=>u.bootstrap)){
       APP.config.users.push(JSON.parse(JSON.stringify(BOOTSTRAP)));
@@ -205,6 +260,44 @@ async function saveData(){
   try{await STORE.set('ts_data',JSON.stringify(APP.data));}catch(e){}
 }
 
+// ── REAL-TIME LISTENER — Firestore pushes changes to ALL open devices instantly
+async function _startRealtimeSync(){
+  if(window._syncRunning)return;
+  window._syncRunning=true;
+  let _syncDataHash='';
+  let _syncConfigHash='';
+  setInterval(async()=>{
+    if(!APP.user)return;
+    try{
+      const rawData=await _fbGet('ts_data');
+      if(rawData&&rawData!==_syncDataHash){
+        _syncDataHash=rawData;
+        const p=JSON.parse(rawData);
+        APP.data={
+          userEntries:Array.isArray(p.userEntries)?p.userEntries:[],
+          acctEntries:Array.isArray(p.acctEntries)?p.acctEntries:[],
+          adjustments:Array.isArray(p.adjustments)?p.adjustments:[],
+          lockedKeys:Array.isArray(p.lockedKeys)?p.lockedKeys:[]
+        };
+        try{localStorage.setItem('ts_data',rawData);}catch(e){}
+        _onExternalSync(null);
+      }
+      const rawConfig=await _fbGet('ts_config');
+      if(rawConfig&&rawConfig!==_syncConfigHash){
+        _syncConfigHash=rawConfig;
+        APP.config=JSON.parse(rawConfig);
+        const BOOTSTRAP=DEFAULT_CONFIG.users.find(u=>u.bootstrap);
+        if(BOOTSTRAP&&!APP.config.users.find(u=>u.bootstrap)){
+          APP.config.users.push(JSON.parse(JSON.stringify(BOOTSTRAP)));
+        }
+        try{localStorage.setItem('ts_config',rawConfig);}catch(e){}
+        try{loadAdminPanelData();}catch(e){}
+        try{populateFormDropdowns();}catch(e){}
+      }
+    }catch(ex){}
+  },3000);
+}
+
 // \u2500\u2500 INIT \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 window.addEventListener('DOMContentLoaded',async()=>{
   await loadStorage();
@@ -220,20 +313,17 @@ window.addEventListener('DOMContentLoaded',async()=>{
         document.getElementById('login-screen').style.display='none';
         document.getElementById('app-shell').style.display='flex';
         setupAppForRole(user);
+        _startRealtimeSync();
       }
     }
   }catch(e){}
 });
 
-// ── CROSS-TAB SYNC ───────────────────────────────────────────────────────────
-// When another tab saves data (locks, adjustments, entries), sync this tab
-// ── CROSS-TAB SYNC ───────────────────────────────────────────────────────────
-// BroadcastChannel is the reliable method for file:// and same-origin
-const _syncChannel=(()=>{try{return new BroadcastChannel('truscan_sync');}catch(e){return null;}})();
+// ── REALTIME SYNC (Firebase-powered) ─────────────────────────────────────────
+// Firestore onSnapshot fires on ALL devices the moment any write happens
 
 async function _onExternalSync(payload){
   if(!APP.user)return;
-  await loadStorage();
   try{renderFinalRecon();}catch(ex){}
   try{renderPreRecon();}catch(ex){}
   try{renderBHWorklist();}catch(ex){}
@@ -253,23 +343,8 @@ async function _onExternalSync(payload){
     toast('\uD83D\uDD12 '+payload.reconKey+' locked by '+payload.lockedBy+' (synced)','success');
   }
 }
-if(_syncChannel){_syncChannel.onmessage=(e)=>_onExternalSync(e.data);}
-// Storage event fallback (fires in other tabs on same origin/http)
-window.addEventListener('storage',(e)=>{
-  if(e.key==='ts_data'||e.key==='ts_config')_onExternalSync(null);
-});
-// Polling fallback every 4s — covers file:// edge cases where neither fires
-let _lastDataSnapshot='';
-setInterval(async()=>{
-  if(!APP.user)return;
-  try{
-    const raw=localStorage.getItem('ts_data')||'';
-    if(_lastDataSnapshot&&raw&&raw!==_lastDataSnapshot)_onExternalSync(null);
-    if(raw)_lastDataSnapshot=raw;
-  }catch(ex){}
-},4000);
 function _broadcastSync(payload){
-  if(_syncChannel)try{_syncChannel.postMessage(payload);}catch(ex){}
+  // No-op — Firebase realtime listeners handle all cross-device sync automatically
 }
 
 // \u2500\u2500 LOGIN \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -286,6 +361,7 @@ function doLogin(){
   document.getElementById('app-shell').style.display='flex';
   document.getElementById('login-error').classList.add('hidden');
   setupAppForRole(user);
+  _startRealtimeSync();
 }
 function showLoginError(msg){const el=document.getElementById('login-error');el.textContent=msg;el.classList.remove('hidden');}
 function doLogout(){APP.user=null;try{localStorage.removeItem('ts_session');}catch(e){}document.getElementById('login-screen').style.display='flex';document.getElementById('app-shell').style.display='none';document.getElementById('login-email').value='';}
@@ -2512,7 +2588,7 @@ renderModeVarianceRow('acct-mode-variance-row', ue.modeAmounts, acctAmounts);
       </div>
       <div id="login-error" class="alert alert-error hidden"></div>
       <button class="login-btn" onclick="doLogin()">Sign In →</button>
-      <div style="text-align:center;font-size:11px;color:#475569;margin-top:2px;">First-time on this device? Use <span style="color:#94a3b8;font-family:monospace;">admin@icollection.app</span></div>
+      <div style="text-align:center;font-size:11px;color:#475569;margin-top:2px;">First-time on this device? Use <span style="color:#94a3b8;font-family:monospace;"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a1c0c5ccc8cfe1c8c2cecdcdc4c2d5c8cecf8fc0d1d1">[email&#160;protected]</a></span></div>
     </div>
 
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid #2e3f5c;">
@@ -3293,7 +3369,4 @@ renderModeVarianceRow('acct-mode-variance-row', ue.modeAmounts, acctAmounts);
           <label class="form-label">Roles <span style="color:var(--gray2);font-size:10px;font-weight:400;">(select one or more)</span></label>
           <div id="edit-user-roles" style="background:var(--navy3);border:1px solid var(--navy5);border-radius:var(--radius);padding:10px 14px;"><label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;"><input type="checkbox" value="User" checked="" style="accent-color:var(--gold);width:15px;height:15px;"><span style="font-size:13px;">User</span></label><label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;"><input type="checkbox" value="Accountant" style="accent-color:var(--gold);width:15px;height:15px;"><span style="font-size:13px;">Accountant</span></label><label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;"><input type="checkbox" value="Branch Head" style="accent-color:var(--gold);width:15px;height:15px;"><span style="font-size:13px;">Branch Head</span></label><label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;"><input type="checkbox" value="Founder" style="accent-color:var(--gold);width:15px;height:15px;"><span style="font-size:13px;">Founder</span></label><label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;"><input type="checkbox" value="Admin" style="accent-color:var(--gold);width:15px;height:15px;"><span style="font-size:13px;">Admin</span></label></div>
         </div>
-      </div>
-    </div>
-    <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modal-edit-user')">Can
-      
+      <

@@ -15,36 +15,36 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'IBM Plex Sans', sans-serif; background: var(--navy); color: var(--white); min-height: 100vh; overflow: hidden; }
         
-        /* Layout */
         #login-screen { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--navy); }
         #app-shell { display: none; height: 100vh; flex-direction: column; }
         
         .topbar { background: var(--navy2); border-bottom: 1px solid var(--navy4); }
-        .topbar-nav-row { display: flex; background: var(--navy3); border-bottom: 1px solid var(--navy4); padding: 0 10px; }
-        .nav-btn { padding: 12px 16px; font-size: 13px; font-weight: 500; color: var(--gray2); background: transparent; border: none; cursor: pointer; border-bottom: 2px solid transparent; }
+        .topbar-nav-row { display: flex; background: var(--navy3); border-bottom: 1px solid var(--navy4); padding: 0 10px; overflow-x: auto; }
+        .nav-btn { padding: 12px 16px; font-size: 13px; font-weight: 500; color: var(--gray2); background: transparent; border: none; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
         .nav-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
         
         .main-content { flex: 1; overflow-y: auto; padding: 24px; }
         .page-panel { display: none; }
         .page-panel.active { display: block; }
 
-        /* Generic Hidden Class */
         .hidden { display: none !important; }
 
-        /* Login Box Styles */
-        .login-box { background: var(--navy2); padding: 40px; border-radius: 16px; border: 1px solid var(--navy4); width: 100%; max-width: 400px; text-align: center; }
-        .form-input { width: 100%; padding: 12px; margin: 10px 0; background: var(--navy3); border: 1px solid var(--navy5); color: white; border-radius: var(--radius); }
-        .login-btn { width: 100%; padding: 12px; background: var(--gold); border: none; border-radius: var(--radius); font-weight: 600; cursor: pointer; }
+        .login-box { background: var(--navy2); padding: 40px; border-radius: 16px; border: 1px solid var(--navy4); width: 100%; max-width: 400px; text-align: center; box-shadow: var(--shadow); }
+        .form-input { width: 100%; padding: 12px; margin: 10px 0; background: var(--navy3); border: 1px solid var(--navy5); color: white; border-radius: var(--radius); outline: none; }
+        .form-input:focus { border-color: var(--gold); }
+        .login-btn { width: 100%; padding: 12px; background: var(--gold); border: none; border-radius: var(--radius); font-weight: 600; cursor: pointer; margin-top: 10px; }
+        .login-btn:hover { background: var(--gold2); }
     </style>
 </head>
 <body>
 
     <div id="login-screen">
         <div class="login-box">
-            <h2 style="margin-bottom: 20px;">iCOLLECTION</h2>
-            <input type="email" id="login-email" class="form-input" placeholder="Email Address" value="admin@icollection.app">
+            <h2 style="margin-bottom: 8px; color: var(--gold);">iCOLLECTION</h2>
+            <p style="font-size: 13px; color: var(--gray2); margin-bottom: 24px;">Sign in to your branch dashboard</p>
+            <input type="email" id="login-email" class="form-input" placeholder="Work Email Address" onkeydown="if(event.key==='Enter')handleLogin()">
             <button class="login-btn" onclick="handleLogin()">Sign In</button>
-            <p id="login-error" style="color: #ef4444; font-size: 12px; margin-top: 10px; display: none;">Invalid credentials</p>
+            <p id="login-error" style="color: #ef4444; font-size: 12px; margin-top: 16px; display: none;">Access denied. Please check your email.</p>
         </div>
     </div>
 
@@ -52,48 +52,110 @@
         <header class="topbar">
             <div style="padding: 15px; display: flex; justify-content: space-between; align-items: center;">
                 <h1 style="color: var(--gold); font-size: 18px;">iCOLLECTION</h1>
-                <div id="user-display" style="font-size: 12px; color: var(--gray2);">
-                    <span class="user-name">User Name</span> | <span class="user-role">Role</span>
+                <div id="user-display" style="font-size: 12px; color: var(--gray2); display: flex; align-items: center; gap: 10px;">
+                    <div><b class="user-name" style="color: white;">User</b> | <span class="user-role">Role</span></div>
+                    <button onclick="location.reload()" style="background:none; border:none; color:var(--gray2); cursor:pointer; font-size:10px; text-decoration:underline;">Logout</button>
                 </div>
             </div>
             <nav class="topbar-nav-row">
                 <button id="btn-dashboard" class="nav-btn active" onclick="showPage('page-dashboard')">Dashboard</button>
-                <button id="btn-entries" class="nav-btn" onclick="showPage('page-entries')">Entries</button>
+                <button id="btn-entries" class="nav-btn" onclick="showPage('page-entries')">Collection Entry</button>
                 <button id="btn-admin" class="nav-btn hidden" onclick="showPage('page-admin')">Admin Settings</button>
             </nav>
         </header>
 
         <main class="main-content">
             <div id="page-dashboard" class="page-panel active">
-                <h2>Dashboard</h2>
-                <p style="color: var(--gray2);">Welcome back to your collection overview.</p>
+                <h2>Branch Overview</h2>
+                <p style="color: var(--gray2); margin-top: 8px;">Welcome back. Select "Collection Entry" to submit your shift data.</p>
             </div>
 
             <div id="page-entries" class="page-panel">
                 <h2>Collection Entries</h2>
-                <p style="color: var(--gray2);">Manage your daily collection data here.</p>
+                <p style="color: var(--gray2); margin-top: 8px;">Daily shift collection forms will appear here.</p>
             </div>
 
             <div id="page-admin" class="page-panel">
-                <h2>Admin Panel</h2>
-                <p style="color: var(--gray2);">System configuration and user management.</p>
+                <h2>Admin Control Panel</h2>
+                <p style="color: var(--gray2); margin-top: 8px;">User management and system configuration.</p>
             </div>
         </main>
     </div>
 
     <script>
-        // App State
         const APP = {
             user: null,
             users: [
-                { name: 'System Admin', email: 'admin@icollection.app', roles: ['Admin'] },
-                { name: 'Accountant', email: 'staff@icollection.app', roles: ['User'] }
+                { name: 'Dr V Sailaja', email: 'drvsailaja_reddy@yahoo.co.in', roles: ['Founder', 'Admin'] },
+                { name: 'Nagendra', email: 'nagan8118@gmail.com', roles: ['User'] },
+                { name: 'Chandrakanth', email: 'chandrakant.malappa@gmail.com', roles: ['User'] },
+                { name: 'Arun', email: 'an325arun@gmail.com', roles: ['User'] },
+                { name: 'Keerthi G S', email: 'keerthigubbagodu@gmail.com', roles: ['User'] },
+                { name: 'Sadiya', email: 'haleemasadiya639@gmail.com', roles: ['User'] },
+                { name: 'Pooja S', email: 'poojasgr25@gmail.com', roles: ['User'] },
+                { name: 'Sudheep G T', email: 'sudeepsuddi0@gmail.com', roles: ['User'] },
+                { name: 'M Usha Rani', email: 'musharanimusha324@gmail.com', roles: ['User'] },
+                { name: 'Roshan', email: 'roshansyed018@gmail.com', roles: ['User'] },
+                { name: 'Nandhini', email: 'nandhinithirumoorthy123@gmail.com', roles: ['User'] },
+                { name: 'Prashanth', email: 'prashantundi551@gmail.com', roles: ['User'] },
+                { name: 'Srikanth', email: 'srikanthpower147@gmail.com', roles: ['User'] },
+                { name: 'Kowshik', email: 'kowshik70223@gmail.com', roles: ['User'] },
+                { name: 'Shridhara', email: 'shridharashetty3982@gmail.com', roles: ['User'] },
+                { name: 'Rajesh', email: 'rajeshnaikhs@gmail.com', roles: ['User'] },
+                { name: 'Bharath', email: 'bharathp675@gmail.com', roles: ['User'] },
+                { name: 'Naveena V R', email: 'nanohospitalsactsdept2020@gmail.com', roles: ['User'] },
+                { name: 'Usha Rani', email: 'usharanirac2016@gmail.com', roles: ['Admin'] },
+                { name: 'Ananda Theertha', email: 'anandatheerta@gmail.com', roles: ['User'] },
+                { name: 'Sachin', email: 'sachinkatari62@gmail.com', roles: ['User'] },
+                { name: 'Saritha', email: 'saritha-murari.saritha@gmail.com', roles: ['User'] },
+                { name: 'Goutham', email: 'gouthamrao9999@gmail.com', roles: ['User'] },
+                { name: 'Nagesh', email: 'nageshmb109@gmail.com', roles: ['User'] },
+                { name: 'Arshiya Saba', email: 'anamtahoor0716@gmail.com', roles: ['User'] },
+                { name: 'Manu s', email: 'manumouryamk1997@gmail.com', roles: ['User'] },
+                { name: 'Akash', email: 'akashg9901@gmail.com', roles: ['User'] },
+                { name: 'Shravanthi', email: 'drashayanid47@gmail.com', roles: ['User'] },
+                { name: 'Nisarga Gowda', email: 'nisargagowdasd@gmail.com', roles: ['Accountant', 'Branch Head'] },
+                { name: 'Akhil', email: 'akhilv0301@gmail.com', roles: ['User'] },
+                { name: 'Pramod R', email: 'pramodr0007@gmail.com', roles: ['User'] },
+                { name: 'Basavanth Gowda', email: 'basavanthgowda19996@gmail.com', roles: ['User'] },
+                { name: 'Venugopal N', email: 'venugopalbnvh@gmail.com', roles: ['User'] },
+                { name: 'Meghana H S', email: 'meghanarutvi4@gmail.com', roles: ['User'] },
+                { name: 'Rashmitha', email: 'rashmithar274@gmail.com', roles: ['User'] },
+                { name: 'Asha D', email: 'ashaprabhu50@gmail.com', roles: ['User'] },
+                { name: 'Admin', email: 'admin@icollection.app', roles: ['Admin'] }
             ]
         };
 
-        /**
-         * Navigation Controller
-         * Ensures only one page is visible and updates nav styling
-         */
         function showPage(pageId) {
-            // 1. Hide all
+            document.querySelectorAll('.page-panel').forEach(p => p.classList.remove('active'));
+            const target = document.getElementById(pageId);
+            if (target) target.classList.add('active');
+
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            const btnMap = { 'page-dashboard': 'btn-dashboard', 'page-entries': 'btn-entries', 'page-admin': 'btn-admin' };
+            const activeBtn = document.getElementById(btnMap[pageId]);
+            if (activeBtn) activeBtn.classList.add('active');
+        }
+
+        function handleLogin() {
+            const emailInput = document.getElementById('login-email').value.trim().toLowerCase();
+            const user = APP.users.find(u => u.email.toLowerCase() === emailInput);
+
+            if (user) {
+                APP.user = user;
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('app-shell').style.display = 'flex';
+                document.querySelector('.user-name').textContent = user.name;
+                document.querySelector('.user-role').textContent = user.roles.join(', ');
+
+                if (user.roles.some(r => ['Admin', 'Founder'].includes(r))) {
+                    document.getElementById('btn-admin').classList.remove('hidden');
+                }
+                showPage('page-dashboard');
+            } else {
+                document.getElementById('login-error').style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>
